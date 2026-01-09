@@ -1,0 +1,20 @@
+{
+  "name": "meowtech-n8n",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "containerEnv": {
+    "HTTP_PROXY": "http://host.docker.internal:7890",
+    "HTTPS_PROXY": "http://host.docker.internal:7890",
+    "NO_PROXY": "localhost,127.0.0.1"
+  },
+  "workspaceFolder": "/workspace",
+  "remoteUser": "root",
+  "settings": {
+    "python.defaultInterpreterPath": "/usr/local/bin/python",
+    "http.proxy": "http://host.docker.internal:7890",
+    "http.proxyStrictSSL": false
+  },
+  "extensions": ["ms-python.python"],
+  "postCreateCommand": "pip install -r requirements.txt",
+  "forwardPorts": [8000]
+}

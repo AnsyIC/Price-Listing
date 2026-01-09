@@ -1,0 +1,1133 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "dissectionInstructionsDocURL",
+              "value": "1tXb4m_GOMVCmIYuovSK3aApvaKr2ZqpX3OwoQUezKuA",
+              "type": "string"
+            },
+            {
+              "id": "efd92963-527b-4edf-a934-5a80698bcf89",
+              "name": "pricingInstructionsDocURL",
+              "value": "17NJSVTZJoXjO7t3RlWmgk23aOlGu0amxJggDz1NM6CU",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "pricingSheetId",
+              "value": "1l0oKgQX754JVAsDbUkC5vvd8MC9YqfIcU9bZ4R3Q23Y",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "notificationEmail",
+              "value": "jiongtian0111@hotmail.com",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "4406f8e2-1b69-4531-96ae-1cf9d538149e",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -864,
+        1440
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Experimental plan:{ {{ $json.experimentDoc }} }\nFinal pricing report:{ {{ $json.reportDoc }} }",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "你是“Agent 1 - Instruction Optimizer（指令优化器）”，用于内部流程 Flow 1：根据【客户实验方案 Word】与【人工核验的最终报价报告 Word】来评估并（必要时）更新两份生产用指令文档：\n- 《实验方案拆解指令》（供生产流程 Agent 1 使用）\n- 《报价计算指令》（供生产流程 Agent 2 使用）\n\n你有且仅有 4 个工具可用：\n1) getDissectInstru：读取当前《实验方案拆解指令》\n2) getPricingInstru：读取当前《报价计算指令》\n3) updateDissectInstru：用“查找并替换”的方式更新《实验方案拆解指令》\n4) updatePricingInstru：用“查找并替换”的方式更新《报价计算指令》\n\n========================\n一、输入与输出（强约束）\n========================\n输入（每次运行会提供）：\n- experimentDoc：客户实验方案 Word（可能包含表格与图片）\n- reportDoc：人工核验的最终报价报告 Word（可能包含表格、备注、假设、折扣/优惠）\n\n输出（只能输出 JSON，且只能包含以下两个字段；不得输出任何解释、前后缀、Markdown）：\n{\n  \"updatedDissectingInstructions\": \"true\" | \"false\",\n  \"updatedPricingInstructions\": \"true\" | \"false\"\n  \"error\": \"{error message}\"\n}\n\n说明：\n- “true” 表示你确实调用了对应 update 工具并成功完成替换更新。\n- “false” 表示未更新（包括“不需要更新”或“需要更新但更新失败/找不到替换锚点”）。\n- \"error\" 不为空表示流程失败，情形包括但不限于：读取当前《实验方案拆解指令》、《报价计算指令》、experimentDoc、reportDoc为空，更新时更新失败等\n\n========================\n二、你的任务目标（判定标准）\n========================\n你必须判断：当前两份生产用指令，是否足以让生产流程中的两个 agent 在处理该实验方案时，生成与人工核验最终报价报告一致（或足够接近）的结果。\n\n你需要做的是“指令评审与小步迭代”，不是重新设计系统。更新必须满足：\n- 仅针对本次样本暴露出的缺口/歧义进行补强\n- 尽量不破坏已有规则（向后兼容）\n- 使指示通用，不要为单一案例硬编码，不直接写入具体实验报告的内容，除非是有参考意义的范例（如是，则标明“示例”）\n- 更新粒度尽量小（推荐一次更新只替换一个段落/小节）\n\n========================\n三、工作流程（必须按顺序执行）\n========================\nStep 0：初始化输出标记\n- updatedDissectingInstructions = \"false\"\n- updatedPricingInstructions = \"false\"\n\nStep 1：读取两份当前指令\n- 调用 getDissectInstruc()\n- 调用 getPricingInstruct()\n把两份指令视为“生产规范”，后续所有判断都要对照它们。\n\nStep 2：通读 experimentalPlanDoc（实验方案）\n你要识别实验方案中“生产拆解与报价计算”真正需要的信息，特别注意：\n- 章节结构：是否存在明确的“一、二、三/1.1/1.2/检测指标”等层级\n- 分组信息：组名、每组只数、是否分批（如 7d/28d 两批）、每批只数\n- 操作与频次：如灌胃给药 1次/天×7天、称重×次数、行为学×次数\n- 检测指标与“需要确认/假设”：如“需要客户确定检测时间/检测只数/假设每组6只”\n- 表格信息：很多方案用表格给出项目、单价、数量、合计；必须能被拆解 agent 提取为文本\n- 图片信息：图片常用于说明剃毛范围/创面示意等；若对定价有影响（例如明确“剃毛范围=胸部”），应提示在拆解内容里保留\n\nStep 3：通读 finalPricingReportDoc（人工核验最终报价报告）\n你要提取“报价输出应当呈现的事实模式”，用于反推指令是否足够：\n- 报价分节方式（常见：实验动物/药物制备/模型建立/检测及取材/行为学/其他）\n- 每节下的收费条目名称（与价格表/服务项目命名是否一致）\n- 计价公式模式：单价 ×（只数/笼数/天数/次数/样本数/抗体数/板数…的乘积）\n- 是否存在“免费项/不收费项/客户自带项/外包项/运输费/加班费（可选）/耗材费（一次性）”\n- 是否存在“优惠后/折扣/初步报价/以实际为准”等语句，以及它在最终总价中的体现方式\n\nStep 4：评估“拆解指令”是否足够（针对生产 Agent 1）\n生产 Agent 1 的输入输出（你要以此为标准评估指令）：\n输入：实验方案 Word\n输出 JSON：\n{\n  \"sectionHeaders\": [ ... ],\n  \"sectionContents\": [ ... ]\n}\n\n你需要判断当前《实验方案拆解指令》是否明确要求：\n- 生成 sectionHeaders 与 sectionContents 一一对应，顺序与文档逻辑一致\n- 能识别并保留：动物信息、分组信息、关键操作步骤、频次与时间线、检测项目、需要确认/假设\n- 能处理表格：把表格每一行转成可读文本（推荐“列名:值”或“项目|说明|数量|频次”），不能丢失数量/频次\n- 能处理“分批/多时间点”：例如 7d 与 28d 两批，需要在内容中表达清楚对应的只数与操作\n- 输出语言为中文，且 sectionHeader 是简短标题，sectionContents 是可供定价 agent 解析的“信息密集文本”\n\n若发现缺口（例如：指令没说怎么把表格转文本；没强调保留“需要确认”的假设；没强调分批表达），则需要更新《实验方案拆解指令》。\n\nStep 5：评估“报价指令”是否足够（针对生产 Agent 2）\n生产 Agent 2 的输入输出（你要以此为标准评估指令）：\n输入 JSON：\n{\n  \"sectionHeaders\": [...],\n  \"sectionContents\": [...]\n}\n输出 JSON（必须完全符合既定 schema）：\n- generatedDate（字符串）\n- notes（可选字符串数组）\n- sections：每节包含 sectionHeader、items、sectionTotal\n- items：每条包含 name、unitPrice、quantityFactors、subtotal、isOutsourced\n- totalCost（数字）\n\n你需要判断当前《报价计算指令》是否明确要求：\nA) 分节策略\n- 对每个 sectionHeader 输出一个对应的 section 结果（即使 items 为空也要输出，除非指令明确允许跳过）\n- sectionHeader 必须与输入一致（或给出非常明确的映射规则，但默认“保持一致”最稳妥）\n\nB) 条目抽取与命名\n- 能从 sectionContents 中抽取“收费服务项”的名称（例如：打耳标、适应性饲养、剃毛、麻醉、造模、超声、取材、染色、免疫荧光、行为学等）\n- name 的命名要尽量匹配价格表“服务项目/模型名称”的标准叫法；若存在同义词，应在指令中给出同义词映射写法（例如：‘打耳标/耳标’、‘饲养/持续饲养/造模期间饲养’、‘超声心动/心脏超声’等）\n- 免费项（如“分组免费”）的处理规则要明确：推荐“不要输出 item”或“输出 unitPrice=0 且备注说明”，二选一但必须一致\n\nC) 价格表检索与解析（指令需与实际价格表结构相容）\n- 价格表按 sheet 分类（示例：动物饲养相关/造模/行为学实验/病理/荧光定量PCR/WB/组学）\n- “服务项目-价格”列里可能是字符串（如“8元/笼/天”“20元/笼/天”）或数值；指令需明确：提取数值作为 unitPrice（货币单位默认元）\n- 造模 sheet 常为“模型名称-价格”；要能按模型名称匹配（如“大鼠心肌梗死模型”“大鼠脑梗MCAO模型”等）\n- 若价格表没有该条目：必须标记 isOutsourced=true，并在 notes 中提示“需人工询价/外包”，unitPrice 与 subtotal 规则要在指令中定死（推荐 unitPrice=0, subtotal=0）\n\nD) 数量因子 quantityFactors（关键）\n- quantityFactors 必须是对象，至少 1 个因子，值为非负数\n- 指令必须定义“常用因子键名”（建议统一英文键，便于后续 Excel 公式/脚本一致性），例如：\n  - \"no.\"：只数/样本数/张数（当语义明确为样本/张也可用 no.，但更推荐细分）\n  - \"cages\"：笼数\n  - \"days\"：天数\n  - \"times\"：次数/频次\n  - \"plates\"：板数（ELISA 等）\n  - \"antibodies\"：抗体数（IHC/IF 计价常出现“抗体/样”）\n  - \"markers\"：多标/几标（如“三标四色”）\n- 指令必须要求：subtotal = unitPrice ×（quantityFactors 各值的乘积）\n- 如果报告里存在“只对实验用动物计费，备用动物只计购买不计后续操作”的情况，指令必须要求在 notes 里写明假设，并严格按报告逻辑计费（这是常见差异点）\n\nE) 备注 notes 与不确定信息\n- 对“需要确认/假设”的地方：必须写入 notes（例如“检测时间需客户确认；以下按每组6只估算”）\n- 对“运输费/加班费（可选）/以实际为准/初步报价”：必须写入 notes\n- 对“客户提供药物/抗体/材料”：写入 notes；若因此产生代买/外包条目，按外包规则输出\n\nF) 折扣/优惠处理（如报告出现“优惠后：xxx”）\n- 指令必须规定一种稳定表示法（任选其一，但要写死）：\n  方案1：totalCost 取“优惠后”金额，并在 notes 写明“原价xxx，优惠后xxx”\n  方案2：新增一个“优惠/折扣”分节或在最后一个分节增加一条折扣 item（unitPrice 为负数，quantityFactors={\"times\":1}，subtotal 为负数），使 totalCost 与报告一致\n- 无论采用哪种方案，都必须保证 totalCost 与最终报告的“最终应付金额”一致\n\n若发现上述任意点在当前《报价计算指令》中缺失/含糊/与人工报告不一致，则需要更新《报价计算指令》。\n\n========================\n四、如何执行“更新”（非常重要：只允许 find & replace）\n========================\n你不能直接“追加一段”，只能通过 update 工具做“查找并替换”。\n\n更新策略（必须遵守）：\n1) 尽量只更新小片段\n2) findText 必须是你从 getXXXInstruc() 返回内容里复制出来的“原文片段”，且尽量长到足够唯一（建议≥40字，包含小标题更好）\n3) replaceText 必须包含 findText 原内容并在其基础上做增补/修正（避免删掉原规则导致回归）\n4) 一份指令文档单次运行最多做 1-3 次替换；能一次替换解决就不要多次\n5) 如果你找不到稳定锚点（findText 在文档中不存在或易重复），则选中全文档来修改，但要避免遗漏原文内容并且尽可能避免这种全文档操作\n\n更新内容写法规范（用于你生成 replaceText）：\n- 保持中文\n- 用清晰的小标题/编号/项目符号\n- 给出“可复制的示例输出/示例 item”\n- 明确“必须/禁止/默认”规则，减少歧义\n\n========================\n五、结束条件与最终输出\n========================\n- 若你认为无需更新任何指令：不要调用 update 工具，直接输出\n- 若更新了其中一份或两份指令：在更新成功后输出对应 true/false。\n- 输出必须是严格 JSON，字段顺序不要求，但只能有这三个字段，值只能是字符串 \"true\"/\"false\"。\n"
+        }
+      },
+      "id": "57725b4e-a03b-4158-bf3f-292e3a87843b",
+      "name": "Agent 1 - Instruction Optimizer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        80,
+        1232
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Experimental plan:{ {{ $json.experimentDoc }} }\nFinal pricing report:{ {{ $json.reportDoc }} }",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "你是“Agent 2 - Pricing Sheet Optimizer（价格表优化器）”，用于内部流程 Flow 1：基于【实验方案文本】与【人工核验的最终报价报告文本】检查并更新公司 Google Sheets 价格表，确保价格表覆盖报价报告中出现的所有收费服务的“单价/计价基准”。\n\n你只能使用 2 个工具：\n1) getPricingSheet：读取价格表中的某一个工作表（一次只能读一个 sheet）\n2) updatePricingSheet[1-7]：对对应价格表索引执行“追加行（append）”或“更新行（update）”操作（可能需要多次调用以处理多条变更）\n\n================================\n一、输入与输出（强约束）\n================================\n输入（每次运行会提供）：\n- experimentDoc：实验方案文本（仅用于理解上下文与分类，不作为单价真值来源）\n- reportDoc：人工核验的最终报价报告文本（这是你判断“应覆盖哪些服务与单价”的主要依据；若有多个报告，可能被拼接或以列表形式提供）\n\n输出（只能输出 JSON；不得输出解释、Markdown、前后缀）：\n{\n  \"updatedPricingSheet\": \"true\" | \"false\",\n  \"error\": \"\"\n}\n\n- updatedPricingSheet = \"true\"：至少成功执行过一次 updatePricingSheet 且对表有实质更改（新增或更新）\n- updatedPricingSheet = \"false\"：未做任何更改，或需要更改但全部更新失败\n- error：正常为空字符串；若出现工具调用失败（如experimentDoc、reportDoc、或sheet返回为空）/无法定位行/无法解析关键字段等，填写简短错误摘要\n\n================================\n二、你的目标（判定口径）\n================================\n你要回答的问题是：\n“当前价格表是否为最终报价报告中所有收费服务提供了可用于生产报价的单价信息？”\n\n若否，你需要通过 updatePricingSheet 把缺失的服务补齐，或把明显过期且无折扣说明的单价更新为报告中的单价。\n\n注意：你的目标是“覆盖与可匹配”，不是重构价格体系。更新应当：\n- 小步增量、向后兼容\n- 尽量避免重复项（除非为了解决同义词/别名匹配问题）\n- 尽量保留价格表原有列结构与命名规范\n- 不创建新 sheet（除非工具明确支持且已配置；默认不创建）\n\n================================\n三、工作表范围与递归读取（必须）\n================================\n由于 getPricingSheet 一次只能读取一个 sheet，你必须按以下顺序递归读取并建立索引：\n1) 动物饲养相关\n2) 造模\n3) 行为学实验\n4) 病理\n5) 荧光定量PCR\n6) WB\n7) 组学\n\n对每个 sheet：\n- 识别“表头行”（包含列名的那一行）与“核心主键列”（用于定位/查重）\n- 建立服务索引：标准化服务名 -> (sheetName, rowId/rowIndex, 行数据)\n\n各 sheet 的典型主键列（若表头存在）：\n- 动物饲养相关：服务项目\n- 造模：模型名称\n- 行为学实验：实验项目\n- 病理：服务项目\n- 荧光定量PCR：服务项目\n- WB：收费项目\n- 组学：项目名称（必要时连同 项目类型 一起作为复合主键）\n\n================================\n四、从最终报价报告中抽取“应覆盖的收费服务清单”\n================================\n你必须从 finalPricingReportText 中抽取“收费行项目”，每条至少包含：\n- serviceName：服务名称（中文为主）\n- unitPriceRaw：报价中出现的“单价文本”（例如：15元/只/次、500元/板、600元/次、一次性计费 等）\n剩余列根据实际列所需内容匹配\n\n抽取规则（必须稳健）：\n- 优先抽取报告中的表格行（常见列：项目/规格说明/单价/数量/小计）\n- 也要抽取类似“XXX：15元/只/次*90只*7次=...”这种自然语言报价行\n- 忽略纯叙述性实验步骤（不含价格/单价信息）\n- “免费/不收费”的项目不覆盖（如“分组（免费）”）\n\n计价特殊情况处理：\n- “以实际为准/按步骤收费/实际发生才收费”：这类项目单价不固定。若报价报告把它作为收费项出现，但价格表没有对应条目，则新增条目并把价格字段写为同样的非固定文本；并在服务说明中标注“不纳入自动计算，仅提示人工确认”。\n\n================================\n五、标准化与同义词（避免生产匹配失败）\n================================\n为了让生产报价 agent 更容易匹配，你必须做名称标准化与同义词处理：\n\n标准化规则：\n- 去除首尾空格、全角/半角差异、重复空格\n- 统一括号（（ ）与()）、去掉无关装饰词（如“如下图所示”“默认”）\n- 保留关键区分词（如“单标/双标/三标”“芯片”“荧光/白光”“大鼠/小鼠”）\n\n常见同义词/别名策略（用于判断“已覆盖”以及决定是否追加别名行）：\n- “适应性饲养 / 普通饲养 / 饲养费 / 造模期间饲养 / 给药期间饲养”\n- “耳标 / 打耳标”\n- “灌胃 / 灌胃给药”\n- “称重 / 称重及记录 / 体重记录”\n- “剃毛 / 脱毛 / 脱毛膏处理”\n- “超声心动 / 心脏超声 / 超声检测 / 左心常规指标”\n- “Evans blue-TTC / TTC双染 / 梗死面积检测”\n- “TUNEL染色 / Tunel（荧光）检测 / 凋亡检测”\n- “耗材费 / 材料费 / 一次性耗材”\n- “加班费 / 人工加班”\n\n如果报告中的 serviceName 在价格表中只存在“同价但不同名”的近义项：\n- 若生产端匹配很可能失败（名称差异大），你应当追加一条“别名行”（推荐），让服务项目列直接等于报告中的 serviceName，价格与原项一致，并在说明写明“同 XX 项”。\n\n================================\n六、覆盖性判断与更新策略（核心）\n================================\n对每一个抽取到的收费服务（serviceName）：\n\n1) 查找覆盖（按优先级）：\n  a. 匹配：任意 sheet 主键列与 serviceName意义一致\n  b. 规范化后匹配：标准化名一致\n  c. 同义词/近似匹配：名称高度相似且计价单位一致（如都为 元/只/次）\n\n2) 若已覆盖：\n  - 若价格表中该条目的价格为空/缺失：更新（updateRow）\n  - 若价格表价格与报告单价明显冲突：\n      - 若报告文本出现“优惠/折扣/初步报价/以实际为准/特价/客户确认”等提示：不更新\n      - 否则（无折扣说明，且为常规服务）：更新（updateRow）\n  - 若仅是格式差异（例如 20 与 “20元/笼/天（5只/笼）”）：不必更新，除非生产端依赖完整单位文本（此时补全单位文本而不是改数值）\n\n3) 若未覆盖：\n  - 选择合适 sheet 并追加（appendRow）\n  - 同时尽量补齐单位/说明，减少歧义\n\n================================\n七、缺失项应写入哪个 sheet（分类启发式）\n================================\n优先按服务语义分类；无法判断时，宁可放入“动物饲养相关”（它承载通用操作最多），并在说明中写明建议归类。\n\n分类建议：\n- 动物饲养相关：动物购买（如 SD大鼠/小鼠具体单价）、饲养费（普通/适应性/造模期间/给药期间）、耳标、剃毛、麻醉（若为通用麻醉服务）、称重、给药、采血、取材、无害化处理、耗材费、加班费等通用费用\n- 造模：各种疾病/损伤/移植/手术模型与假手术（Sham）类（例如 大鼠心肌梗死模型、假手术组）\n- 行为学实验：水迷宫、旷场、强迫游泳等行为学\n- 病理：HE/Masson/TTC/TUNEL/免疫组化/免疫荧光/扫描/分析等（优先复制最相近条目的分类字段与单位）\n- 荧光定量PCR：RNA提取、反转录、相对/绝对定量等\n- WB：WB检测、ELISA、以及类似“试剂盒由客户提供”的板类检测（如 BCAA 检测按板计费）\n- 组学：16S/转录组等测序服务\n\n================================\n八、updatePricingSheet 的调用规范（必须遵守）\n================================\n你必须使用工具提供的“追加行/更新行”能力来改表：\n- append：新增服务（含别名行）\n- update：修正已有服务的价格/说明\n\n在没有必要更新的情况下，不要调用updatePricingSheet工具！\n在调用此工具时，只对工具输入需要新增/修正的行，不输入多余信息， 如：{服务项目: 小鼠普通饲养费, 价格: 8元/笼/天（应小于等于5只/笼）, 服务说明: 屏障环境（SPF）常规：1周1次换垫料，2次换水，观察摄水量（默认普通维持或繁殖饲料，如有特殊要求，需客户提供饲料）}\n\n追加/更新时的字段填充原则：\n- 不改表头，不新增列\n- 价格字段尽量保留“带单位的原始文本”（如 20元/笼/天、5元/只/次、500元/板）\n- 若该 sheet 的价格列为纯数值（如 造模 的“价格”常为数字），则写入数值；单位写入说明列（若存在）或保持模型名称自解释\n- 说明列（如 服务说明/备注）用来记录：别名来源、试剂盒由客户提供、是否可选、校准来源等\n\n================================\n九、失败与回滚策略（输出 error 的规则）\n================================\n- 若任何一次 updatePricingSheet 调用失败：\n  - 继续尝试处理其他条目（不要因单项失败中断全部）\n  - 在 error 中记录“失败条目名 + 失败原因摘要”\n- 若至少有一项更新成功：updatedPricingSheet=\"true\"\n- 若全部应更新项都失败或没有执行更新：updatedPricingSheet=\"false\"\n- error 为空字符串表示“无错误或无需更新”\n\n================================\n十、最终输出（强约束）\n================================\n执行完检查与（必要的）更新后，只输出以下 JSON（不要输出其他内容）：\n{\n  \"updatedPricingSheet\": \"true\" | \"false\",\n  \"error\": \"\"\n}\n"
+        }
+      },
+      "id": "05f7c497-b8f4-4c7f-830d-3e281c6151b7",
+      "name": "Agent 2 - Pricing Sheet Optimizer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        80,
+        1648
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "5ae099f0-688f-4c39-a5fa-8200080a79fb",
+      "name": "OpenAI Model - Pricing Optimizer",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        1840
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "hI54U0jKOIJ5G1qm",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n\t\"updatedDissectingInstructions\": \"true\",\n    \"updatedPricingInstructions\": \"true\",\n    \"error\": \"\"\n}"
+      },
+      "id": "2109fce8-d48b-485c-8690-9276d0eb7b64",
+      "name": "Output Parser - Instruction Update",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        496,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n\t\"updatedPricingSheet\": \"true\",\n    \"error\": \"\"\n}"
+      },
+      "id": "1d8c5aad-b116-41f6-83a6-55c0166d3767",
+      "name": "Output Parser - Pricing Sheet Update",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        752,
+        1872
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Workflow Configuration').first().json.notificationEmail }}",
+        "subject": "Workflow Update Notification - Pricing System",
+        "message": "=Updates completed:\n\nDissecting Instruction Document: {{ $json.output.updatedDissectingInstructions ? \"Updated\" : \"No changes\" }}\nPricing Instruction Document: {{ $json.updatedPricingInstructions ? \"Updated\" : \"No changes\" }}\nPricing Sheet: {{ $json.pricingUpdates && Object.keys($json.pricingUpdates).length > 0 ? \"Updated\" : \"No changes\" }}\n\nTimestamp: {{ $now }}",
+        "options": {}
+      },
+      "id": "4a97e8b2-32b5-4758-8751-2d6d383ad00f",
+      "name": "sendNotification",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        1440
+      ],
+      "webhookId": "0921884d-2e28-4ab4-9c76-e95018c8de38",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8N3yrr4JijYIwURr",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "访问现有价格表",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.pricingSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Sheet', `访问选中页，本文件共有{动物饲养相关，造模，行为学实验，病理，荧光定量PCR，WB，组学} 7页`, 'string') }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "900228be-24d6-4f08-b978-f3ceeffce672",
+      "name": "readPricingSheet",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -304,
+        1840
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AIsUFBxS9lQSbChl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "formTitle": "更新数据库",
+        "formFields": {
+          "values": [
+            {
+              "fieldName": "experimentDoc",
+              "fieldLabel": "请上传实验方案文本",
+              "fieldType": "textarea",
+              "requiredField": true
+            },
+            {
+              "fieldName": "reportDoc",
+              "fieldLabel": "请上传报价单",
+              "fieldType": "textarea",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.4,
+      "position": [
+        -1088,
+        1440
+      ],
+      "id": "3e9a4f9c-6cfd-4b59-a867-2d8f08206c05",
+      "name": "Evoluation Flow",
+      "webhookId": "651cf879-533e-4cb4-bc30-f2ea480722b6"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentURL": "={{ $('Workflow Configuration').first().json.pricingInstructionsDocURL }}",
+        "simple": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Simplify', ``, 'boolean') }}",
+        "actionsUi": {
+          "actionFields": [
+            {
+              "action": "replaceAll",
+              "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('actionFields0_Old_Text', `查找并选中需要更新的文本。这可以是整个文件或是一个段落。`, 'string') }}",
+              "replaceText": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('actionFields0_New_Text', `更新替换已选中文本`, 'string') }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.googleDocsTool",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        1472
+      ],
+      "id": "8bc571f5-14ed-4285-b945-5edc2c674205",
+      "name": "updatePricingInstru",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "ffn3RX6NuRZxHLiJ",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentURL": "={{ $('Workflow Configuration').first().json.dissectionInstructionsDocURL }}",
+        "simple": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Simplify', ``, 'boolean') }}",
+        "actionsUi": {
+          "actionFields": [
+            {
+              "action": "replaceAll",
+              "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('actionFields0_Old_Text', `查找并选中需要更新的文本。这可以是整个文件或是一个段落。`, 'string') }}",
+              "replaceText": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('actionFields0_New_Text', `更新替换已选中文本`, 'string') }}"
+            }
+          ]
+        }
+      },
+      "id": "7ebc47fc-7b98-4ef2-bbaf-581f22e3a9d6",
+      "name": "updateDissectInstru",
+      "type": "n8n-nodes-base.googleDocsTool",
+      "typeVersion": 2,
+      "position": [
+        64,
+        1472
+      ],
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "ffn3RX6NuRZxHLiJ",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "documentURL": "={{ $('Workflow Configuration').first().json.pricingInstructionsDocURL }}",
+        "simple": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Simplify', ``, 'boolean') }}"
+      },
+      "type": "n8n-nodes-base.googleDocsTool",
+      "typeVersion": 2,
+      "position": [
+        208,
+        1472
+      ],
+      "id": "d9256620-276b-494f-a357-8c49aef51962",
+      "name": "getPricingInstru",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "ffn3RX6NuRZxHLiJ",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "documentURL": "={{ $('Workflow Configuration').first().json.dissectionInstructionsDocURL }}",
+        "simple": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Simplify', ``, 'boolean') }}"
+      },
+      "id": "27a27d99-27d9-4b9a-9c7f-1f7c30fff7e0",
+      "name": "getDissectInstru",
+      "type": "n8n-nodes-base.googleDocsTool",
+      "typeVersion": 2,
+      "position": [
+        352,
+        1472
+      ],
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "ffn3RX6NuRZxHLiJ",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "访问现有价格表 - 造模",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.pricingSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1603087692,
+          "mode": "list",
+          "cachedResultName": "造模",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1l0oKgQX754JVAsDbUkC5vvd8MC9YqfIcU9bZ4R3Q23Y/edit#gid=1603087692"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "模型名称"
+          ],
+          "schema": [
+            {
+              "id": "模型分类",
+              "displayName": "模型分类",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "模型名称",
+              "displayName": "模型名称",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "价格",
+              "displayName": "价格",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "297975e3-77a6-4f69-bb3e-7a8a1a8f670f",
+      "name": "updatePricingSheet2",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -48,
+        1888
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AIsUFBxS9lQSbChl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "访问现有价格表 - 行为学实验",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.pricingSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1565249135,
+          "mode": "list",
+          "cachedResultName": "行为学实验",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1l0oKgQX754JVAsDbUkC5vvd8MC9YqfIcU9bZ4R3Q23Y/edit#gid=1565249135"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "实验项目"
+          ],
+          "schema": [
+            {
+              "id": "实验项目",
+              "displayName": "实验项目",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "价格",
+              "displayName": "价格",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "租赁",
+              "displayName": "租赁",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "备注",
+              "displayName": "备注",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "df378562-c7ce-482f-802c-54edfc4c0d61",
+      "name": "updatePricingSheet3",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        80,
+        1888
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AIsUFBxS9lQSbChl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "访问现有价格表 - 病理",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.pricingSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1201071855,
+          "mode": "list",
+          "cachedResultName": "病理",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1l0oKgQX754JVAsDbUkC5vvd8MC9YqfIcU9bZ4R3Q23Y/edit#gid=1201071855"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "服务项目"
+          ],
+          "schema": [
+            {
+              "id": "I分类",
+              "displayName": "I分类",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Ⅱ分类",
+              "displayName": "Ⅱ分类",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "服务项目",
+              "displayName": "服务项目",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "单位",
+              "displayName": "单位",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "单价",
+              "displayName": "单价",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "b31d7cc9-73db-4dad-9e82-b4f0dddde6b5",
+      "name": "updatePricingSheet4",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        192,
+        1888
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AIsUFBxS9lQSbChl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "访问现有价格表 - 荧光定量PCR",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.pricingSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 957583915,
+          "mode": "list",
+          "cachedResultName": "荧光定量PCR",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1l0oKgQX754JVAsDbUkC5vvd8MC9YqfIcU9bZ4R3Q23Y/edit#gid=957583915"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "服务项目"
+          ],
+          "schema": [
+            {
+              "id": "服务项目",
+              "displayName": "服务项目",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "实验说明",
+              "displayName": "实验说明",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "价格",
+              "displayName": "价格",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "周期",
+              "displayName": "周期",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "5f986573-c77e-47ad-95c2-0a405ce387bb",
+      "name": "updatePricingSheet5",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        320,
+        1872
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AIsUFBxS9lQSbChl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "访问现有价格表 - WB",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.pricingSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1601998735,
+          "mode": "list",
+          "cachedResultName": "WB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1l0oKgQX754JVAsDbUkC5vvd8MC9YqfIcU9bZ4R3Q23Y/edit#gid=1601998735"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "收费项目"
+          ],
+          "schema": [
+            {
+              "id": "收费项目",
+              "displayName": "收费项目",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "单价（元）",
+              "displayName": "单价（元）",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "服务说明",
+              "displayName": "服务说明",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "525673fa-e82d-40c3-8444-e8973ed70ff8",
+      "name": "updatePricingSheet6",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        448,
+        1872
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AIsUFBxS9lQSbChl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "访问现有价格表 - 组学",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.pricingSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1037002236,
+          "mode": "list",
+          "cachedResultName": "组学",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1l0oKgQX754JVAsDbUkC5vvd8MC9YqfIcU9bZ4R3Q23Y/edit#gid=1037002236"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "项目名称"
+          ],
+          "schema": [
+            {
+              "id": "项目类型",
+              "displayName": "项目类型",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "项目名称",
+              "displayName": "项目名称",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "报价",
+              "displayName": "报价",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "周期",
+              "displayName": "周期",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "009b6edf-e7d3-43e8-9e24-bc29130417d6",
+      "name": "updatePricingSheet7",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        576,
+        1872
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AIsUFBxS9lQSbChl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "修改现有价格表 - 动物饲养相关",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.pricingSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "动物饲养相关",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "服务项目"
+          ],
+          "schema": [
+            {
+              "id": "服务项目",
+              "displayName": "服务项目",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "价格",
+              "displayName": "价格",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "服务说明",
+              "displayName": "服务说明",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "cb0c4731-df73-484e-9aa4-fa9363ea2a7c",
+      "name": "updatePricingSheet1",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -160,
+        1888
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AIsUFBxS9lQSbChl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "caa778d2-f387-483c-a675-680672442767",
+      "name": "OpenAI - Instruction Optimizer",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        1472
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "hI54U0jKOIJ5G1qm",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Agent 1 - Instruction Optimizer",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Agent 2 - Pricing Sheet Optimizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model - Pricing Optimizer": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 2 - Pricing Sheet Optimizer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Parser - Instruction Update": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Agent 1 - Instruction Optimizer",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 1 - Instruction Optimizer": {
+      "main": [
+        [
+          {
+            "node": "sendNotification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 2 - Pricing Sheet Optimizer": {
+      "main": [
+        [
+          {
+            "node": "sendNotification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Parser - Pricing Sheet Update": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Agent 2 - Pricing Sheet Optimizer",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "readPricingSheet": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 2 - Pricing Sheet Optimizer",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evoluation Flow": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "updatePricingInstru": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 1 - Instruction Optimizer",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "updateDissectInstru": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 1 - Instruction Optimizer",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "getPricingInstru": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 1 - Instruction Optimizer",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "getDissectInstru": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 1 - Instruction Optimizer",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "updatePricingSheet2": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 2 - Pricing Sheet Optimizer",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "updatePricingSheet3": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 2 - Pricing Sheet Optimizer",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "updatePricingSheet4": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 2 - Pricing Sheet Optimizer",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "updatePricingSheet5": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 2 - Pricing Sheet Optimizer",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "updatePricingSheet6": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 2 - Pricing Sheet Optimizer",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "updatePricingSheet7": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 2 - Pricing Sheet Optimizer",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "updatePricingSheet1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 2 - Pricing Sheet Optimizer",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Instruction Optimizer": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 1 - Instruction Optimizer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "accdf91f-f9f5-42c4-89ec-57bb25aaa785",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "55401fe5368ba0fa40fcf9893f92a9765eacf87a1ffb18d171b5a37c8f9ac57a"
+  },
+  "id": "yKwZyus6FpnUAACM",
+  "tags": []
+}

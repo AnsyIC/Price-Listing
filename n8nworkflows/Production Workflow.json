@@ -1,0 +1,500 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Production Workflow Configuration').first().json.pricingSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Sheet', `访问选中页，本文件共有{动物饲养相关，造模，行为学实验，病理，荧光定量PCR，WB，组学} 7页`, 'string') }}"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "A1:Z1000"
+            }
+          }
+        }
+      },
+      "id": "ef481812-abed-4791-8e03-02d879822a2a",
+      "name": "readPricingSheetProd",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -224,
+        2400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AIsUFBxS9lQSbChl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-5.2",
+        "options": {
+          "responseFormat": "json_object",
+          "timeout": 600000
+        }
+      },
+      "id": "29d37192-22f6-43fb-ac09-a52e55ded4f5",
+      "name": "OpenAI - Pricing Calculator",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        2400
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "8ujaQZt3XiFFFucH",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-5-mini",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "45259e7a-9df2-4aee-a7cf-40e7192b064f",
+      "name": "OpenAI - Plan Dissector",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        2400
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "hI54U0jKOIJ5G1qm",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "documentURL": "={{ $('Production Workflow Configuration').first().json.pricingInstructionsDocId }}"
+      },
+      "id": "cb4456ae-5146-4c0d-8e6c-22eea07428b5",
+      "name": "getPricingInstruProd",
+      "type": "n8n-nodes-base.googleDocsTool",
+      "typeVersion": 2,
+      "position": [
+        16,
+        2400
+      ],
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "ffn3RX6NuRZxHLiJ",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "documentURL": "={{ $('Production Workflow Configuration').first().json.dissectionInstructionsDocId }}"
+      },
+      "id": "5ab2135f-87bc-472c-bdd2-025ee15bcabd",
+      "name": "getDissectInstruProd",
+      "type": "n8n-nodes-base.googleDocsTool",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        2400
+      ],
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "ffn3RX6NuRZxHLiJ",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"title\": \"Pricing Output Schema v2\",\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\"generatedDate\", \"sections\", \"totalCost\"],\n  \"properties\": {\n    \"generatedDate\": {\n      \"type\": \"string\",\n      \"description\": \"报价生成日期（YYYY-MM-DD）\"\n    },\n    \"notes\": {\n      \"type\": \"array\",\n      \"description\": \"全局备注（如：客户提供材料、待确认假设、外包询价项说明）\",\n      \"items\": { \"type\": \"string\" }\n    },\n    \"sections\": {\n      \"type\": \"array\",\n      \"description\": \"按拆解章节输出的报价结果\",\n      \"items\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\"sectionHeader\", \"items\", \"sectionTotal\"],\n        \"properties\": {\n          \"sectionHeader\": {\n            \"type\": \"string\",\n            \"description\": \"必须与输入 sectionHeaders 中的某一项匹配（通常保持完全一致）\"\n          },\n          \"sectionTotal\": {\n            \"type\": \"number\",\n            \"description\": \"本章节 items subtotal 求和\"\n          },\n          \"items\": {\n            \"type\": \"array\",\n            \"description\": \"本章节收费条目\",\n            \"items\": {\n              \"type\": \"object\",\n              \"additionalProperties\": false,\n              \"required\": [\"name\", \"unitPrice\", \"quantityFactors\", \"subtotal\", \"isOutsourced\"],\n              \"properties\": {\n                \"name\": {\n                  \"type\": \"string\",\n                  \"description\": \"收费服务/项目名称（尽量与价格表标准名一致；可加别名括号）\"\n                },\n                \"unitPrice\": {\n                  \"type\": \"number\",\n                  \"description\": \"单价（元）\"\n                },\n                \"quantityFactors\": {\n                  \"type\": \"object\",\n                  \"description\": \"数量因子（多维）。必须至少包含 1 个键；subtotal = unitPrice × 所有数量因子乘积。键名必须使用规范中文单位键。\",\n                  \"minProperties\": 1,\n                  \"additionalProperties\": false,\n                  \"properties\": {\n                    \"只\": { \"type\": \"number\", \"minimum\": 0, \"description\": \"动物只数/按只计费的样本数\" },\n                    \"天\": { \"type\": \"number\", \"minimum\": 0, \"description\": \"天数\" },\n                    \"次\": { \"type\": \"number\", \"minimum\": 0, \"description\": \"次数/频次/批次\" },\n                    \"笼\": { \"type\": \"number\", \"minimum\": 0, \"description\": \"笼数\" },\n                    \"板\": { \"type\": \"number\", \"minimum\": 0, \"description\": \"板数（如ELISA等）\" },\n                    \"张\": { \"type\": \"number\", \"minimum\": 0, \"description\": \"切片/图片/扫描等按张计\" },\n                    \"部位\": { \"type\": \"number\", \"minimum\": 0, \"description\": \"部位数（单侧/双侧/器官部位等）\" },\n                    \"抗体\": { \"type\": \"number\", \"minimum\": 0, \"description\": \"抗体数（IHC/IF等按抗体计）\" },\n                    \"指标\": { \"type\": \"number\", \"minimum\": 0, \"description\": \"指标/通道/标记数（如多指标分析）\" },\n                    \"个\": { \"type\": \"number\", \"minimum\": 0, \"description\": \"按“个”计的数量（如常规内脏取材或无其他适配单位）\" }\n                  },\n                  \"anyOf\": [\n                    { \"required\": [\"只\"] },\n                    { \"required\": [\"天\"] },\n                    { \"required\": [\"次\"] },\n                    { \"required\": [\"笼\"] },\n                    { \"required\": [\"板\"] },\n                    { \"required\": [\"张\"] },\n                    { \"required\": [\"部位\"] },\n                    { \"required\": [\"抗体\"] },\n                    { \"required\": [\"指标\"] },\n                    { \"required\": [\"个\"] }]\n                  }\n                },\n                \"subtotal\": {\n                  \"type\": \"number\",\n                  \"description\": \"小计（元）\"\n                },\n                \"isOutsourced\": {\n                  \"type\": \"boolean\",\n                  \"description\": \"是否外包/价格表缺失需人工询价\"\n                }\n              }\n            }\n          }\n        }\n      }\n    },\n    \"totalCost\": {\n      \"type\": \"number\",\n      \"description\": \"总价（sections.sectionTotal 求和）\"\n    }\n}\n"
+      },
+      "id": "73c9c283-dbb0-4ef3-8f3a-d82045aa7030",
+      "name": "Output Parser - Pricing Report",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        160,
+        2368
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "dissectionInstructionsDocId",
+              "value": "1tXb4m_GOMVCmIYuovSK3aApvaKr2ZqpX3OwoQUezKuA",
+              "type": "string"
+            },
+            {
+              "id": "efd92963-527b-4edf-a934-5a80698bcf89",
+              "name": "pricingInstructionsDocId",
+              "value": "17NJSVTZJoXjO7t3RlWmgk23aOlGu0amxJggDz1NM6CU",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "pricingSheetId",
+              "value": "1l0oKgQX754JVAsDbUkC5vvd8MC9YqfIcU9bZ4R3Q23Y",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "notificationEmail",
+              "value": "jiongtian0111@hotmail.com",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "e20f3cc7-f182-42b0-91ab-664774749df9",
+      "name": "Production Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -864,
+        2176
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "实验方案",
+        "formFields": {
+          "values": [
+            {
+              "fieldName": "experimentalPlan",
+              "fieldLabel": "请上传实验方案",
+              "fieldType": "textarea",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.4,
+      "position": [
+        -1088,
+        2176
+      ],
+      "id": "2fc35f31-aa0c-4e21-b57d-092812045c16",
+      "name": "Production Flow",
+      "webhookId": "ea9e6c0c-a1e9-4573-8abe-a2c2002e349b"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "wordDocument",
+              "value": "={{ $('Generate Word Document').first().binary }}",
+              "type": "object"
+            },
+            {
+              "id": "id-2",
+              "name": "excelDocument",
+              "value": "={{ $('Generate Excel Document').first().binary }}",
+              "type": "object"
+            },
+            {
+              "id": "id-3",
+              "name": "status",
+              "value": "Documents generated successfully",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "timestamp",
+              "value": "={{ $now }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1e06f6d-2a57-4880-8fd1-d4b45b668b99",
+      "name": "Prepare Final Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        640,
+        2176
+      ]
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "from openpyxl import Workbook\nfrom openpyxl.styles import Font, PatternFill, Border, Side, Alignment\nfrom openpyxl.utils import get_column_letter\nimport json\nfrom io import BytesIO\nimport base64\n\n# Get the pricing report from the previous node\npricing_data = _items[0]['json']\n\n# Create a new workbook and select the active sheet\nwb = Workbook()\nws = wb.active\nws.title = \"Pricing Breakdown\"\n\n# Define headers\nheaders = [\"Project Name\", \"Service\", \"Unit Price\", \"Quantity\", \"Total Cost\"]\nws.append(headers)\n\n# Style the header row\nheader_fill = PatternFill(start_color=\"4472C4\", end_color=\"4472C4\", fill_type=\"solid\")\nheader_font = Font(bold=True, color=\"FFFFFF\", size=12)\nborder = Border(\n    left=Side(style='thin'),\n    right=Side(style='thin'),\n    top=Side(style='thin'),\n    bottom=Side(style='thin')\n)\n\nfor col in range(1, len(headers) + 1):\n    cell = ws.cell(row=1, column=col)\n    cell.fill = header_fill\n    cell.font = header_font\n    cell.border = border\n    cell.alignment = Alignment(horizontal='center', vertical='center')\n\n# Parse pricing report and add data rows\n# Assuming pricing_data contains items or services array\nrow_num = 2\nif 'items' in pricing_data:\n    items = pricing_data['items']\nelif 'services' in pricing_data:\n    items = pricing_data['services']\nelse:\n    # Fallback: treat the entire data as a single item\n    items = [pricing_data]\n\nfor item in items:\n    project_name = item.get('projectName', item.get('project', 'N/A'))\n    service = item.get('service', item.get('serviceName', 'N/A'))\n    unit_price = item.get('unitPrice', item.get('price', 0))\n    quantity = item.get('quantity', item.get('qty', 1))\n    \n    # Add data to row\n    ws.cell(row=row_num, column=1, value=project_name)\n    ws.cell(row=row_num, column=2, value=service)\n    ws.cell(row=row_num, column=3, value=unit_price)\n    ws.cell(row=row_num, column=4, value=quantity)\n    \n    # Add formula for Total Cost\n    formula = f\"=C{row_num}*D{row_num}\"\n    ws.cell(row=row_num, column=5, value=formula)\n    \n    # Apply borders and number formatting\n    for col in range(1, 6):\n        cell = ws.cell(row=row_num, column=col)\n        cell.border = border\n        if col in [3, 5]:  # Unit Price and Total Cost columns\n            cell.number_format = '$#,##0.00'\n        if col == 4:  # Quantity column\n            cell.alignment = Alignment(horizontal='center')\n    \n    row_num += 1\n\n# Add Grand Total row\nws.cell(row=row_num, column=4, value=\"Grand Total:\")\nws.cell(row=row_num, column=4).font = Font(bold=True)\nws.cell(row=row_num, column=4).alignment = Alignment(horizontal='right')\n\n# Add SUM formula for grand total\nsum_formula = f\"=SUM(E2:E{row_num-1})\"\nws.cell(row=row_num, column=5, value=sum_formula)\nws.cell(row=row_num, column=5).font = Font(bold=True)\nws.cell(row=row_num, column=5).number_format = '$#,##0.00'\nws.cell(row=row_num, column=5).fill = PatternFill(start_color=\"E7E6E6\", end_color=\"E7E6E6\", fill_type=\"solid\")\n\n# Apply borders to grand total row\nfor col in range(4, 6):\n    ws.cell(row=row_num, column=col).border = border\n\n# Adjust column widths\nws.column_dimensions['A'].width = 20\nws.column_dimensions['B'].width = 30\nws.column_dimensions['C'].width = 15\nws.column_dimensions['D'].width = 12\nws.column_dimensions['E'].width = 15\n\n# Save workbook to BytesIO\nbuffer = BytesIO()\nwb.save(buffer)\nbuffer.seek(0)\n\n# Convert to base64 for n8n binary data\nexcel_data = buffer.getvalue()\nexcel_base64 = base64.b64encode(excel_data).decode('utf-8')\n\n# Return as n8n binary data\nreturn [\n    {\n        'json': {\n            'success': True,\n            'filename': 'pricing_breakdown.xlsx',\n            'mimeType': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'\n        },\n        'binary': {\n            'data': {\n                'data': excel_base64,\n                'mimeType': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',\n                'fileName': 'pricing_breakdown.xlsx'\n            }\n        }\n    }\n]"
+      },
+      "id": "b86bd974-e1d7-4de3-b55d-d0838540de74",
+      "name": "Generate Excel Document",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        2272
+      ]
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "from docx import Document\nfrom docx.shared import Pt, RGBColor\nfrom docx.enum.text import WD_ALIGN_PARAGRAPH\nimport io\n\n# =========================\n# Input: Agent 2 schema v2\n# =========================\ninput_data = _items[0]['json']\n\n# Common n8n patterns:\n# - direct object\n# - wrapped in {\"output\": {...}}\n# - wrapped in [{\"output\": {...}}] but n8n usually unwraps already\npricing_report = input_data.get('output', input_data)\n\n# If your parser node returns {\"output\": {...}} nested deeper, adapt here:\n# pricing_report = input_data.get('output', {}).get('output', input_data.get('output', input_data))\n\n# Create a new Word document\ndoc = Document()\n\n# Title\ntitle = doc.add_heading('实验方案报价单', 0)\ntitle.alignment = WD_ALIGN_PARAGRAPH.CENTER\n\n# Date\ndate_para = doc.add_paragraph()\ndate_para.add_run(f\"生成日期: {pricing_report.get('generatedDate', '')}\")\ndate_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT\n\n# Helper: format quantityFactors into readable string\ndef format_quantity_factors(qf: dict) -> str:\n    if not isinstance(qf, dict) or not qf:\n        return \"\"\n    # Preferred key order\n    key_order = [\"no.\", \"days\", \"times\", \"cages\", \"plates\", \"slides\", \"sites\", \"antibodies\", \"markers\"]\n    parts = []\n    used = set()\n    for k in key_order:\n        if k in qf:\n            parts.append(f\"{k}={qf[k]}\")\n            used.add(k)\n    # append remaining keys\n    for k, v in qf.items():\n        if k not in used:\n            parts.append(f\"{k}={v}\")\n    return \" × \".join(parts)\n\n# Sections\nsections = pricing_report.get('sections', [])\nfor section in sections:\n    # Section heading (new schema: sectionHeader only)\n    doc.add_heading(section.get('sectionHeader', ''), level=1)\n\n    items = section.get('items', [])\n    if items:\n        # v2: name, unitPrice, quantityFactors, subtotal, isOutsourced\n        table = doc.add_table(rows=1, cols=5)\n        table.style = 'Light Grid Accent 1'\n\n        hdr_cells = table.rows[0].cells\n        hdr_cells[0].text = '项目名称'\n        hdr_cells[1].text = '数量因子'\n        hdr_cells[2].text = '单价'\n        hdr_cells[3].text = '小计'\n        hdr_cells[4].text = '备注'\n\n        for item in items:\n            row_cells = table.add_row().cells\n            row_cells[0].text = item.get('name', '')\n\n            qf = item.get('quantityFactors', {})\n            row_cells[1].text = format_quantity_factors(qf)\n\n            unit_price = float(item.get('unitPrice', 0) or 0)\n            subtotal = float(item.get('subtotal', 0) or 0)\n\n            row_cells[2].text = f\"¥{unit_price:.2f}\"\n            row_cells[3].text = f\"¥{subtotal:.2f}\"\n            row_cells[4].text = '外包/待确认' if item.get('isOutsourced', False) else ''\n\n            # Mark outsourced items in red\n            if item.get('isOutsourced', False):\n                for cell in row_cells:\n                    for paragraph in cell.paragraphs:\n                        for run in paragraph.runs:\n                            run.font.color.rgb = RGBColor(255, 0, 0)\n\n        # Section total row\n        total_row = table.add_row().cells\n        total_row[0].text = '本节小计'\n        total_row[3].text = f\"¥{float(section.get('sectionTotal', 0) or 0):.2f}\"\n        for cell in total_row:\n            for paragraph in cell.paragraphs:\n                for run in paragraph.runs:\n                    run.font.bold = True\n\n    doc.add_paragraph()  # spacing\n\n# Final total\ndoc.add_heading('总计', level=1)\ntotal_para = doc.add_paragraph()\ntotal_run = total_para.add_run(f\"总费用: ¥{float(pricing_report.get('totalCost', 0) or 0):.2f}\")\ntotal_run.font.size = Pt(16)\ntotal_run.font.bold = True\n\n# Notes\nnotes = pricing_report.get('notes', []) or []\nif notes:\n    doc.add_heading('备注', level=2)\n    for note in notes:\n        doc.add_paragraph(str(note), style='List Bullet')\n\n# Legend\ndoc.add_paragraph()\nlegend = doc.add_paragraph('标注: ')\nred_run = legend.add_run('红色文字')\nred_run.font.color.rgb = RGBColor(255, 0, 0)\nlegend.add_run(' 表示外包/需人工确认项目')\n\n# Save to binary\nbuffer = io.BytesIO()\ndoc.save(buffer)\nbuffer.seek(0)\n\nreturn [\n    {\n        'json': {\n            'success': True,\n            'filename': 'quotation.docx',\n            'mimeType': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'\n        },\n        'binary': {\n            'data': buffer.getvalue()\n        }\n    }\n]\n"
+      },
+      "id": "ce7fa306-4497-4d85-a586-018da443ec6b",
+      "name": "Generate Word Document",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        2080
+      ]
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"title\": \"Plan Dissector Output v2\",\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\"sections\"],\n  \"properties\": {\n    \"sections\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"description\": \"Ordered list of dissected sections. Order must follow the experiment document. Enforce sum(sections.content) approx. == experimentDoc\",\n      \"items\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"required\": [\"header\", \"content\"],\n        \"properties\": {\n          \"header\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Section title.\"\n          },\n          \"content\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Section body text. Includes table-to-text conversion and preserves key numbers, timepoints, frequencies, and 'need confirmation' statements.\"\n          }\n        }\n      }\n    }\n  }\n}\n"
+      },
+      "id": "07fb76c5-a852-4eab-942b-2a8d6c9e379a",
+      "name": "Output Parser - Plan Sections",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -384,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=实验文本拆解JSON: {{ $json.output.toJsonString() }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "你是“Agent 2 - Pricing Calculator（报价计算器）”，用于生产流程（Flow 2）。你的职责是：读取 Agent 1 输出的拆解 JSON（sections 数组），调用并遵循最新《报价计算指令》，结合价格表，生成符合 v2 schema 的分节报价 JSON（用于后续 Word/Excel 生成）。你不输出任何解释性文字，只输出最终 JSON。\n\n你有且仅有 2 个工具：\ngetPricingInstru1()：读取最新《报价计算指令》（规范文档，必须遵循）\nreadPricingSheet1(sheetName?)：读取价格表中的某个工作表（一次只能读一个 sheet；读取时需要建立索引、多次调用）。共有 7 个 sheet：动物饲养相关、造模、行为学实验、病理、荧光定量PCR、WB、组学。\n\n========================\n零、模板安全与占位符规则（强制）\n\n你运行在 LangChain PromptTemplate 的 f-string 模板环境时，半角花括号会被当作“输入变量占位符”，可能触发 INVALID_PROMPT_INPUT（例如把 “次” 误当成变量名）。为彻底避免此类报错，本提示词内不使用半角花括号来展示结构或示例。\n\n如需表达“对象/映射/JSON 结构”，用自然语言列字段，不写示例对象。\n（该规则仅为避免上游模板解析报错；不影响你最终输出必须是标准 JSON。） \n\n========================\n一、输入与输出（强约束）\n\n输入：dissectedPlanJson\n字段：sections（数组）\n每个 section 元素包含两个字段：header（字符串）、content（字符串）\n\n输出：只能输出一个 JSON 对象，且必须严格包含以下字段（不得多、不得少）：\ngeneratedDate：字符串，格式 YYYY-MM-DD\nnotes：字符串数组（允许为空数组，但不得省略该字段）\nsections：数组（数量与输入 sections 相同、顺序相同）\n每个 section 输出对象包含：\nsectionHeader：字符串（必须与输入对应 header 完全一致）\nsectionTotal：数字\nitems：数组（可为空数组）\n每个 item 包含：\nname：字符串\nunitPrice：数字\nquantityFactors：对象（必须存在且至少 1 个键值对；用于多维数量）\nsubtotal：数字\nisOutsourced：Bool\ntotalCost：数字\n\n硬性计算校验：\nsubtotal 等于 unitPrice 乘以 quantityFactors 的所有数值之积\nsectionTotal 等于本节所有 item 的 subtotal 求和\ntotalCost 等于所有 sectionTotal 求和\nisOutsourced 为 true 时：unitPrice 必须为 0，subtotal 必须为 0，quantityFactors 仍必须至少 1 个因子\n\n========================\n二、quantityFactors 规范（核心约束，必须执行）\n\nquantityFactors 允许使用的中文键（优先使用这些；不要输出英文键名）：\n只、次、天、笼、个、张、板、部位、抗体、指标、瓶、人、小时\n\nquantityFactors 的值规则：\n每个值必须为大于 0 的数字（禁止 0；禁止负数）\n若某维数量未知：不要写 0；改走“外包/待确认占位”（见第四部分）\n维度完整性规则（解决“单一数字糊成一个次”的问题）：\n你必须先从价格表条目的计价单位解析“应有维度”，并在 quantityFactors 中提供对应键。例如：\n\n单位包含 “元/只/次” → quantityFactors 至少要有 “只” 与 “次” 两个键\n单位包含 “元/笼/天” → 至少要有 “笼” 与 “天” 两个键\n单位仅为 “元/个” → 至少要有 “个”\n单位仅为 “元/只” → 至少要有 “只”\n严禁用单一 “次=某个数字” 去替代本应多维的 quantityFactors。\n\n只有当价格表单位本身是一维（如 元/只、元/次、元/个、元/瓶、元/小时）时，才允许 quantityFactors 只有一个键。\n\n========================\n三、运行流程（必须按顺序）\n\nStep 1：加载报价计算指令（必须）\n调用 getPricingInstru1() 获取最新《报价计算指令》并遵循。\n不要在输出中复述指令内容。\n\nStep 2：规划并读取价格表 sheet（必须）\n根据输入内容判断需要哪些 sheet，最小化读取，但必须足够支撑计价与单位解析。\n调用 readPricingSheet1(sheetName?) 逐张读取并建立“服务名→单价→单位维度”的索引。\n不得捏造未在表中出现的价格与单位。\n\nStep 3：逐节计价（与输入 sections 一一对应）\n对每个输入 section：\nsectionHeader：直接复制 header。\n从 content 抽取可计价服务项。\n\n对每个服务项：\n在已读价格表中匹配标准服务名与单价、计价单位。\n从 content 解析数量，并按“单位解析出的维度”构造 quantityFactors（使用中文键）。\n计算 subtotal，并填充 isOutsourced。\n若存在分批/多时间点：拆成多条 item（每条的数量维度必须自洽）。\n若该节无收费项：items 输出空数组，sectionTotal 为 0。\n\nStep 4：notes 聚合（尽量简短但可执行）\n对所有“需确认/以实际为准/缺数量/缺单价/可能外包”的点，写入 notes。\n每个外包占位项必须至少对应一条 notes（需人工询价或需客户确认）。\n\n========================\n四、外包/待确认占位规则（强制，避免写 0 数量）\n\n当出现任一情况：\n价格表中无该服务项单价或无法可靠匹配\n输入内容不足以确定关键数量维度（只、次、天、笼、个、张、板、部位等任一必要维度缺失）\n\n明确写明外包/询价/以实际为准且无法固定计价\n必须输出占位 item，且满足：\nisOutsourced 为 true\nunitPrice 为 0\nsubtotal 为 0\nquantityFactors 至少 1 个因子，默认写 “次=1”\n\nname 写清楚“服务名 + 待确认点”\n并在 notes 写明“需人工询价”或“需客户确认”的具体缺口。\n\n========================\n五、最后一公里修复（必须执行）\n\n在输出 JSON 之前，对每个 item 做以下修复：\n\nA) quantityFactors 缺失、为空、或包含 0/负数：\n直接视为“数量未知”。\n若该 item 本来就是外包：强制设为 isOutsourced=true，unitPrice=0，subtotal=0，quantityFactors 设为 “次=1”。\n若该 item 本来非外包：不要用 subtotal/unitPrice 反推一个单一“次”。\n你必须回到“价格表单位维度 + 原文数字信息”重新构造 quantityFactors；若仍无法构造出必需维度，则降级为外包占位，并在 notes 增加“需确认：该项目缺少哪些维度（只/次/天/笼/个/张/板/部位等）”。\n\nB) isOutsourced 为 true 但 unitPrice 或 subtotal 非 0：\n强制改为 unitPrice=0、subtotal=0，并补 notes 说明原因为“需询价/待确认”。\n\nC) subtotal 校验：\n以 unitPrice 与 quantityFactors 为准重算 subtotal。\n若 unitPrice 为 0 且非外包：改为外包占位并写 notes。\n\nD) sectionTotal 与 totalCost：\n重新求和，确保一致。\n\n========================\n禁止事项\n\n不允许省略 quantityFactors 字段。\n不允许 quantityFactors 出现 0 或负数。\n不允许 isOutsourced=true 但 unitPrice 大于 0。\n不允许输出除规定字段外的任何字段。\n不允许输出解释文字或 Markdown，最终只输出 JSON。"
+        }
+      },
+      "id": "f8d1c390-a411-46b9-9041-b856ee90a364",
+      "name": "Agent 2 - Pricing Calculator",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        0,
+        2176
+      ],
+      "retryOnFail": false,
+      "notesInFlow": false,
+      "executeOnce": false,
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=实验方案文本: {{ $json.experimentalPlan }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "你是“Agent 1 - Plan Dissector（实验方案拆解器）”，用于生产流程（Flow 2）。你的职责是：把客户提供的实验方案文本拆解成结构化章节，并输出 JSON：\n{\n  \"sections\": [\n    { \"header\": \"...\", \"content\": \"...\" },\n    ...\n  ]\n}\n你不做任何定价、费用推断或报价建议。\n\n你有且仅有 2 个工具：\n1) getDissectInstru1()：读取最新《实验方案拆解指令》（系统维护的规范文档）\n2) readPricingSheet1(sheetName?)：读取价格表的某个工作表（一次只能读一个 sheet，共{动物饲养相关，造模，行为学实验，病理，荧光定量PCR，WB，组学} 7个sheet）。注意：该工具仅用于帮助你识别“哪些内容对报价敏感、应当在拆解中保留”，你不得基于价格表计算或输出任何价格。\n\n========================\n一、输入与输出（强约束）\n========================\n输入：\n- experimentDoc：实验方案全文文本（可能包含表格转写、图片说明、编号标题、列表等）\n\n输出：\n- 只能输出一个 JSON 对象，且只能包含字段 sections：\n{\n  \"sections\": [\n    { \"header\": string, \"content\": string },\n    ...\n  ]\n}\n\n强约束：\n1) sections 必须是数组且至少 1 个元素；必须按原文逻辑顺序排列。\n2) 每个元素必须包含且仅包含：header、content（禁止额外字段）。\n3) 输出必须是纯 JSON（不要 Markdown、不要解释文字）。\n4) 输出语言以中文为主；可保留必要英文术语（如 ELISA、micro-CT、WB）。\n5) 禁止出现任何单价/金额/总价/计费公式/外包价格推测。\n\n========================\n二、执行流程（必须按顺序）\n========================\nStep 1：加载拆解规范\n- 调用 getDissectInstru1() 获取最新拆解指令。\n- 你的拆解必须遵循该指令的核心要求（章节化、表格转写、保留数字/频次/时间点、保留“需确认/假设”信息等）。\n- 不要把指令原文复述到输出中；输出只包含拆解结果。\n\nStep 2：可选：快速扫描价格表以确定“敏感信息”\n- 仅当实验方案包含大量项目/检测/操作名，且你担心遗漏关键信息时，才调用 readPricingSheet1()。\n- 读取顺序建议（按需）：动物饲养相关 → 造模 → 病理/检测相关 → 行为学实验 → 其他。\n- 你只用它来确认“这些服务在公司体系里常见，需在拆解中写清楚数量/频次/时间点/样本量”，绝对不能输出任何单价或金额。\n\nStep 3：拆解实验方案为章节\n- 优先依据文档显式标题/编号结构生成 header。\n- 若文档缺少清晰结构，则按语义聚类生成常见章节（例如：实验动物、分组、药物与材料、造模/模型构建、给药与干预、取材与标本制备、检测指标/检测方法、其他说明/需确认事项），并保持与原文出现顺序一致。\n- 章节数量避免极端：不要 1 节塞全篇，也不要每一句都独立成节。\n\nStep 4：生成每节 content（信息密集文本）\n- 每个 content 用换行分条列出要点，必须保留关键数字信息（只数、笼数、天数、次数、时间点、剂量、样本量、取材部位等）。\n- 必须把表格内容转写成文本（逐行/逐项），不能只写“见表格”。\n- 图片/图注：若有图注/说明文字必须纳入；若仅标明有图片但无文字且无法提取要点，在相关章节末尾标注“含图片：无可读文字说明”。\n\nStep 5：输出 JSON\n- sectionHeaders 与 sectionContents 一一对应、长度相同。\n- 不输出任何价格、费用、外包判断、收费项目列表（这些属于报价 agent）。\n\n========================\n三、内容保留优先级（避免遗漏的最小集合）\n========================\n在任何实验方案中，你要尽可能确保以下信息被写入某些章节内容中（分散也可，但不能丢）：\n- 动物：种属/品系、性别、周龄/体重、总只数、级别、饲养条件、适应性饲养\n- 分组：组名、每组只数、是否分批/多时间点\n- 操作流程：造模/手术/给药/行为学/取材/检测的时间线与频次（第几天/每周几次/持续几天）\n- 检测：检测项目清单、样本类型、时间点、每组样本量（若有）\n- 不确定项：任何“需确认/默认/以实际为准/客户提供”的描述必须原样保留（放入最相关章节或“需确认事项”章节）\n\n========================\n四、禁止事项\n========================\n- 禁止出现任何单价/金额/总价/计费公式/外包价格推测。\n- 禁止输出除 JSON 之外的任何文字。\n- 禁止擅自补全缺失数据（只可标注“未明确/需确认”，不得猜测数值）。\n\n========================\n五、输出格式校验（输出前自检）\n========================\n- 是否严格遵守JSON schema?\n- 每个 header 是否为短标题字符串？\n- 每个 content 是否包含关键数字、表格转写、需确认事项（如存在）？\n- 是否完全没有价格/费用内容？\n\n完成后直接输出 JSON。\n"
+        }
+      },
+      "id": "370028a2-5cf0-4ad6-b4bd-3d1f84f8c6ef",
+      "name": "Agent 1 - Plan Dissector",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -560,
+        2176
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Production Flow": {
+      "main": [
+        [
+          {
+            "node": "Production Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Production Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Agent 1 - Plan Dissector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Excel Document": {
+      "main": [
+        [
+          {
+            "node": "Prepare Final Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Word Document": {
+      "main": [
+        [
+          {
+            "node": "Prepare Final Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "readPricingSheetProd": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 2 - Pricing Calculator",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Agent 1 - Plan Dissector",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Pricing Calculator": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 2 - Pricing Calculator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "getPricingInstruProd": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 2 - Pricing Calculator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Parser - Pricing Report": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Agent 2 - Pricing Calculator",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 2 - Pricing Calculator": {
+      "main": [
+        [
+          {
+            "node": "Generate Excel Document",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Generate Word Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Plan Dissector": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 1 - Plan Dissector",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "getDissectInstruProd": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 1 - Plan Dissector",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 1 - Plan Dissector": {
+      "main": [
+        [
+          {
+            "node": "Agent 2 - Pricing Calculator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Parser - Plan Sections": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Agent 1 - Plan Dissector",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "accdf91f-f9f5-42c4-89ec-57bb25aaa785",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "55401fe5368ba0fa40fcf9893f92a9765eacf87a1ffb18d171b5a37c8f9ac57a"
+  },
+  "id": "yKwZyus6FpnUAACM",
+  "tags": []
+}

@@ -1,0 +1,57 @@
+Fixed block (rarely changes)
+
+Keep only invariants:
+
+Role + non-goals (Agent 1: no pricing; Agent 2: no extra fields/no prose).
+
+Input/Output schema and hard constraints (field whitelist, ordering, one-to-one section mapping, JSON-only).
+
+Safety/legality constraints (no hallucinated prices; no guessing missing quantities; outsourced placeholder rule).
+
+Core calculation identities (Agent 2: subtotal/sectionTotal/totalCost equations).
+
+Formatting requirements (Chinese keys, allowed key set, integer rules, no 0/negative, no “极小占位”).
+
+This block should be short, stable, and treated as “constitution”.
+
+Delta block (evolves)
+
+Put items that benefit from iterative refinement:
+
+Extraction heuristics (what patterns to look for, how to parse timepoints/frequencies).
+
+Synonym/alias mapping rules (e.g., “打耳标=耳标”).
+
+Table rewrite format guidance and edge-case handling.
+
+Unit-to-dimension mapping expansion (e.g., adding “ml/管” if you later support it).
+
+Notes writing style (“需客户确认：缺少X/Y/Z”) and when to duplicate across sections.
+
+Common failure modes observed + explicit countermeasures (e.g., forbid “未归类” dumping; enforce minimum section coverage; detect missing animal totals).
+
+How to wire into your evolution flow
+
+The evolution agent is only allowed to edit the delta block.
+
+The fixed block is checksum-guarded: any change fails CI unless manually approved.
+
+Run regression tests on a small corpus (plans with tables/timepoints/ambiguous quantities) and score:
+
+Recall of required info (animals/groups/timepoints/tests).
+
+Section alignment correctness.
+
+For Agent 2: dimension completeness + no 0/negative + no tiny placeholders + exact sums.
+
+Minimal template shape in the txt file
+
+Header: “FIXED BLOCK (DO NOT EDIT)” then the fixed rules.
+
+Separator line.
+
+“DELTA BLOCK (EVOLVES)” then the heuristics and examples.
+
+End with “OUTPUT MUST BE JSON ONLY”.
+
+This structure also makes it easier to do a “diff” on evolved prompts and to attribute improvements to specific delta edits.
