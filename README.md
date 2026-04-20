@@ -1,6 +1,6 @@
 # Pricing System Workflows
 
-This repository contains the Python implementation of the **Pricing System Production Workflow** used to generate a pricing report (Word + Excel) for animal experiments from an experimental plan based on the pricing sheets KWT报价单.
+This repository contains the Python implementation of the **Pricing System Production Workflow** used to generate a pricing report (Word + Excel) for a preclinical research service from an experimental plan based on a company pricing catalog.
 
 Note: the previous **Evolution Workflow** has been **deprecated** and moved under `workflow_legacy/` for archival/reference.
 
