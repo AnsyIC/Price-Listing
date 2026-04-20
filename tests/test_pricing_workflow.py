@@ -27,7 +27,7 @@ def test_catalog_finds_he_staining():
         
     assert result["bestMatch"] is not None
     assert result["confidence"] > 0.8
-    print(f"Found HE staining: {result['bestMatch']['canonicalName']}")
+    print(f"Found HE staining: {result['bestMatch']['service']}")
 
 def test_validator_catches_outsourced_he_staining():
     # 1. Setup
@@ -69,7 +69,7 @@ def test_validator_catches_outsourced_he_staining():
     
     # 4. Assert
     assert len(errors) > 0
-    assert any("marked outsourced but exists in catalog" in e for e in errors)
+    assert any("has priced catalog match" in e for e in errors)
     assert "HE染色" in hints
     print("Validator successfully caught outsourced HE staining.")
 
@@ -99,7 +99,7 @@ def test_validator_accepts_valid_he_staining():
                 "sectionTotal": price * 10,
                 "items": [
                     {
-                        "name": match["canonicalName"],
+                        "name": match["service"],
                         "unitPrice": price,
                         "unit": unit,
                         "quantityFactors": {"张": 10}, # Assuming unit has "张"

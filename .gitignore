@@ -180,3 +180,5 @@ secrets/
 workflow_data/
 temp_files/
 uploads/
+
+.workflow_dump/

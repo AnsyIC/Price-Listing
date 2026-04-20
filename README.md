@@ -1,82 +1,186 @@
 # Pricing System Workflows
 
-This repository contains the Python implementation of the Evolution and Production workflows for the Pricing System. It is designed to automate the generation of pricing reports from experimental plans and continuously improve the process based on feedback.
+This repository contains the Python implementation of the **Pricing System Production Workflow** used to generate a pricing report (Word + Excel) for animal experiments from an experimental plan based on the pricing sheets KWT报价单.
 
-## Project Architecture
+Note: the previous **Evolution Workflow** has been **deprecated** and moved under `workflow_legacy/` for archival/reference.
 
-The system is divided into two main workflows:
+## Project Architecture (Production Workflow)
 
-### 1. Evolution Workflow (`workflow_evolution/`)
-This workflow is responsible for "learning" and "optimizing" the system. It takes a completed experiment plan and its corresponding manually verified pricing report as input to refine the instructions and data used by the Production Workflow.
+The runnable pipeline lives in `workflow_production/main.py` and follows this sequence:
 
-*   **Goal:** Optimize instructions and pricing sheets based on feedback.
-*   **Trigger:** Receipt of a finalized Experiment Doc and a verified Pricing Report.
-*   **Key Components:**
-    *   **Agent 1 - Instruction Optimizer:** Analyzes the input documents to update the *Plan Dissector Instructions* and *Pricing Calculator Instructions*. It ensures that the production agents have the most up-to-date logic.
-    *   **Agent 2 - Pricing Sheet Optimizer:** Checks the *Pricing Report* against the current *Pricing Sheet*. If new services or price changes are detected, it updates the Pricing Sheet (simulated as Google Sheets updates).
-    *   **Notification:** Sends a summary of the changes made to the instructions and pricing sheets.
+1) **Trigger / Input Loader**
+   - Reads the experimental plan text (currently `workflow_data/Sample_Experiment_Plan.txt`).
 
-### 2. Production Workflow (`workflow_production/`)
-This is the operational workflow that generates pricing reports for new experimental plans.
+2) **Workflow Configuration** (`Production_Workflow_Configuration`)
+   - Provides runtime configuration (currently only `notificationEmail`).
 
-*   **Goal:** Generate accurate pricing reports from raw experimental plans.
-*   **Trigger:** Receipt of a new Experimental Plan.
-*   **Key Components:**
-    *   **Agent 1 - Plan Dissector:** Reads the raw *Experimental Plan* and breaks it down into structured sections (e.g., sample preparation, sequencing, analysis) based on the *Plan Dissector Instructions*.
-    *   **Agent 2 - Pricing Calculator:** Takes the dissected sections and calculates the cost for each part using the *Pricing Calculator Instructions* and the *Pricing Sheet*.
-    *   **Document Generators:**
-        *   `Generate_Excel_Document`: Creates a detailed Excel spreadsheet with the pricing breakdown.
-        *   `Generate_Word_Document`: Creates a formal Word document for the pricing report.
-    *   **Final Output:** Packages the generated documents for delivery.
+3) **Agent 1 — Plan Dissector** (`Agent_1_Plan_Dissector.run_agent`)
+   - Service provided: converts the raw experimental plan into structured sections.
+   - Uses system prompt: `workflow_data/Agent_1_Plan_Dissector.txt`.
+   - Tooling: calls `readPricingSheet1` (catalog search) when it needs to reference known services.
+   - Output: JSON string that parses into `{ "sections": [{"header": ..., "content": ...}, ...] }`.
 
-## Directory Structure
+4) **Agent 2 — Pricing Calculator** (`Agent_2_Pricing_Calculator.run_agent`)
+   - Service provided: turns dissected sections into a detailed pricing report.
+   - Uses system prompt: `workflow_data/Agent_2_Pricing_Calculator.txt`.
+   - Inputs:
+     - Agent 1 JSON
+     - a service-name index generated from the catalog (`workflow_util.service_catalog.catalog.get_service_names_grouped()`)
+   - Validation + retries:
+     - Each attempt is validated by `workflow_production/validate_pricing_report.py`.
+     - If validation fails, Agent 2 is re-run (up to 3 attempts) with error deltas.
 
-*   `workflow_evolution/`: Contains the Evolution Workflow logic.
-    *   `Agent_1_Instruction_Optimizer.py`: Logic for updating instructions.
-    *   `Agent_2_Pricing_Sheet_Optimizer.py`: Logic for updating pricing data.
-    *   `main.py`: Entry point for the Evolution Workflow.
-*   `workflow_production/`: Contains the Production Workflow logic.
-    *   `Agent_1_Plan_Dissector.py`: Logic for parsing experimental plans.
-    *   `Agent_2_Pricing_Calculator.py`: Logic for calculating prices.
-    *   `Generate_*.py`: Modules for creating output files.
-    *   `main.py`: Entry point for the Production Workflow.
-*   `workflow_data/`: Contains the "brain" of the system - the instructions, prompts, and pricing catalogs used by the agents.
-    *   `Agent_1_Plan_Dissector.txt`: System prompt/instructions for the Plan Dissector.
-    *   `Agent_2_Pricing_Calculator.txt`: System prompt/instructions for the Pricing Calculator.
-    *   `pricing_catalog.json/txt`: The source of truth for pricing.
-*   `n8nworkflows/`: Contains JSON exports of n8n workflows, likely used for orchestration or integration.
+5) **Document Generation**
+   - `Generate_Word_Document.generate_word`: builds a Word quotation (`quotation.docx`).
+   - `Generate_Excel_Document.generate_excel`: builds an Excel breakdown (`pricing_breakdown.xlsx`).
+
+6) **Final Output Packaging** (`Prepare_Final_Output`)
+   - Produces a final payload and writes artifacts to `.workflow_dump/`.
+
+### Pricing catalog lookup ("Pricing Sheet")
+
+There is no live Google Sheets integration in the current production workflow. Instead, the “pricing sheet” is represented by a local catalog:
+
+- Source Excel: `workflow_data/KWT报价单.xlsx`
+- Generated catalog: `workflow_data/pricing_catalog.json` (+ `workflow_data/pricing_catalog.txt`)
+- Runtime search: `workflow_util/service_catalog.py` (fuzzy match via `rapidfuzz` when available)
+- Agent tool entrypoint: `workflow_production/readPricingSheetProd.py` (`readPricingSheet1`)
+
+## Directory Tree
+
+```text
+.
+├── Dockerfile
+├── README.md
+├── requirements.txt
+├── n8nworkflows/
+│   ├── Evolution Workflow.json
+│   └── Production Workflow.json
+├── workflow_data/            # internal company data (not uploaded)
+│   ├── Agent_1_Plan_Dissector.txt
+│   ├── Agent_2_Pricing_Calculator.txt
+│   ├── Sample_Experiment_Plan.txt
+│   ├── KWT报价单.xlsx
+│   ├── pricing_catalog.json
+│   ├── pricing_catalog.txt
+│   └── pricing_service_names.txt
+├── workflow_production/
+│   ├── main.py
+│   ├── Production_Workflow_Configuration.py
+│   ├── Agent_1_Plan_Dissector.py
+│   ├── Agent_2_Pricing_Calculator.py
+│   ├── readPricingSheetProd.py
+│   ├── validate_pricing_report.py
+│   ├── Output_Parser_Plan_Sections.py
+│   ├── Output_Parser_Pricing_Report.py
+│   ├── Generate_Word_Document.py
+│   ├── Generate_Excel_Document.py
+│   └── Prepare_Final_Output.py
+├── workflow_util/
+│   ├── service_catalog.py
+│   ├── Data2Catalog.py
+│   └── generate_service_names.py
+├── workflow_legacy/
+│   ├── workflow_evolution/
+│   ├── old_Plan_Dissector*.txt
+│   └── old_Pricing_Calculator*.txt
+├── tests/
+│   └── test_pricing_workflow.py
+└── .workflow_dump/            # output artifacts (generated)
+```
 
 ## Setup
 
-1.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+1) Install dependencies
 
-2.  **Configure environment variables:**
-    Copy `.env.example` to `.env` and fill in your API keys (e.g., OpenAI API Key).
-    ```bash
-    cp .env.example .env
-    ```
+```bash
+pip install -r requirements.txt
+```
+
+2) Configure environment variables
+
+This project uses `python-dotenv`; you can put variables in `.env` or export them in your shell.
+
+- For OpenAI-compatible GPT models:
+  - `OPENAI_API_KEY`
+- For non-`gpt*` models via DashScope (Aliyun compatible-mode):
+  - `DASHSCOPE_API_KEY`
 
 ## Usage
 
-### Running the Evolution Workflow
-Run this when you have a "ground truth" example (Experiment Plan + Verified Report) to improve the system.
-```bash
-python -m workflow_evolution.main
-```
-*   **Input:** Configured in `main.py` (currently placeholders).
-*   **Output:** Updates to files in `workflow_data/` and a notification.
+### Run the production workflow
 
-### Running the Production Workflow
-Run this to generate a price quote for a new experiment.
+Basic:
+
 ```bash
 python -m workflow_production.main
 ```
-*   **Input:** `workflow_data/Sample_Experiment_Plan.txt` (configurable in `main.py`).
-*   **Output:** Generated Excel and Word documents in `.workflow_dump/`.
 
-## Notes
-*   **LLM Configuration:** The system is configured to use OpenAI models (e.g., `gpt-4o`, `gpt-5.2` in some placeholders). Ensure your API key has access to the required models.
-*   **Google Sheets Integration:** The pricing sheet updates in the Evolution Workflow are designed to interact with Google Sheets, but may be using local file simulations or placeholders depending on the specific implementation details in `workflow_util`.
+Choose a model:
+
+```bash
+python -m workflow_production.main --model gpt-5.2
+```
+
+To use a DashScope-hosted model (any model name that does **not** start with `gpt`):
+
+```bash
+python -m workflow_production.main --model qwen-plus
+```
+
+Outputs:
+
+- Word + Excel files are written to `.workflow_dump/`.
+
+Inputs:
+
+- The default input is `workflow_data/Sample_Experiment_Plan.txt` (edit `workflow_production/main.py` to point to a different plan source).
+
+### Rebuild the pricing catalog from the Excel source
+
+If `workflow_data/KWT报价单.xlsx` changes, regenerate the catalog files:
+
+```bash
+python workflow_util/Data2Catalog.py
+```
+
+Then regenerate the grouped service-name index:
+
+```bash
+python workflow_util/generate_service_names.py
+```
+
+## Validation behavior (Agent 2)
+
+`workflow_production/validate_pricing_report.py` enforces a strict policy:
+
+- `isOutsourced = false`: must be computable, math-correct, and (when matched) consistent with the catalog.
+- `isOutsourced = true`: subtotal must be `0` (math is not enforced), but if the catalog has a priced match the report should still carry the correct `unitPrice` + `unit`.
+
+Agent 2 will retry up to 3 times if validation fails.
+
+## Case memory (human-verified report retrieval)
+
+To improve "industrial" consistency and reduce reruns, the production workflow can inject a small number of **human-verified reference cases** into Agent 1 and Agent 2 at runtime.
+
+- Source examples: `workflow_data/pricing_reports/*.docx`
+- Built casebank: `workflow_data/casebank.jsonl` (JSONL of compact "case cards")
+
+Build / rebuild the casebank:
+
+```bash
+python -m workflow_util.case_memory.build_casebank
+```
+
+Runtime controls (optional):
+
+- `CASE_MEMORY_ENABLED=1` (default) enables reference-case injection when a casebank exists.
+- `CASE_MEMORY_PATH=/workspace/workflow_data/casebank.jsonl` selects a casebank file.
+- `CASE_MEMORY_TOP_K=2` controls how many cases are injected per run.
+- `CASE_MEMORY_AUTO_BUILD=1` (default off) auto-builds the casebank if missing.
+
+Safety rules: reference cases are used only to copy **structure/sectioning/formula style/uncertainty phrasing** — prices and numeric totals must always come from the current catalog via the pricing tool.
+
+## Legacy
+
+`workflow_legacy/` contains archived prompts and the deprecated evolution workflow implementation. It is not wired into the current production run.

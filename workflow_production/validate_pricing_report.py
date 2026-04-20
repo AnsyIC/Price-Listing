@@ -131,7 +131,7 @@ def validate_pricing_report(
                     if unit_price_report is None or abs(unit_price_report - cat_price_f) > 1e-6 or unit_report != cat_unit:
                         errors.append(
                             f"Outsourced item '{name}' has priced catalog match but report didn't carry pricing: "
-                            f"catalog='{best.get('canonicalName')}' sheet={best.get('sheetName')} "
+                            f"catalog='{best.get('service')}' sheet={best.get('sheetName')} "
                             f"price={cat_price_f} unit='{cat_unit}' "
                             f"vs report price={unit_price_report} unit='{unit_report}'"
                         )
@@ -162,7 +162,7 @@ def validate_pricing_report(
                     if abs(unit_price_report - cat_price_f) > 1e-6 or unit_report != cat_unit:
                         errors.append(
                             f"Pricing mismatch for '{name}': report price={unit_price_report}, unit='{unit_report}' "
-                            f"but catalog '{best.get('canonicalName')}' sheet={best.get('sheetName')} "
+                            f"but catalog '{best.get('service')}' sheet={best.get('sheetName')} "
                             f"price={cat_price_f}, unit='{cat_unit}'"
                         )
 
@@ -192,7 +192,7 @@ def validate_pricing_report(
             retry_delta += "\nCatalog Hints (strong matches):\n"
             for name, m in hints.items():
                 retry_delta += (
-                    f"- For '{name}': canonical='{m.get('canonicalName')}', "
+                    f"- For '{name}': service='{m.get('service')}', "
                     f"sheet='{m.get('sheetName')}', price={m.get('unitPrice')}, unit='{m.get('unit')}'\n"
                 )
 

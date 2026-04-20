@@ -13,6 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from workflow_production.readPricingSheetProd import readPricingSheet1
 from workflow_production.validate_pricing_report import validate_pricing_report
 from workflow_util.service_catalog import catalog
+from workflow_util.case_memory.runtime import get_reference_cases_block
 
 def run_agent(dissectedPlanJson: str, model_name="gpt-5.2"):
     if model_name.startswith("gpt"):
@@ -32,11 +33,18 @@ def run_agent(dissectedPlanJson: str, model_name="gpt-5.2"):
     system_message_content = Path("/workspace/workflow_data/Agent_2_Pricing_Calculator.txt").read_text()
     pricingServiceNames = catalog.get_service_names_grouped()
 
+    referenceCases = get_reference_cases_block(
+        dissectedPlanJson if isinstance(dissectedPlanJson, str) else json.dumps(dissectedPlanJson, ensure_ascii=False)
+    )
+    
+    print("\nReference Cases Block for Agent 2:", referenceCases, "\n")
+
     prompt = ChatPromptTemplate.from_messages([
         SystemMessage(content=system_message_content),
         ("user",
          "实验文本拆解JSON: {dissectedPlanJson}\n\n"
          "报价单服务索引:\n{pricingServiceNames}\n\n"
+         "{referenceCases}\n\n"
          "{delta_instructions}"),
         MessagesPlaceholder(variable_name="agent_scratchpad"),
     ])
@@ -52,6 +60,7 @@ def run_agent(dissectedPlanJson: str, model_name="gpt-5.2"):
         result = agent_executor.invoke({
             "dissectedPlanJson": dissectedPlanJson,
             "pricingServiceNames": pricingServiceNames,
+            "referenceCases": referenceCases,
             "delta_instructions": delta_instructions,
         })
 
